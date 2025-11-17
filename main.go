@@ -92,6 +92,8 @@ func main() {
 			fmt.Println("Assistant is using tools...")
 
 			for _, toolCall := range responseMessage.ToolCalls {
+				fmt.Printf("Tool call: %s, arguments: %s\n", toolCall.Function.Name, toolCall.Function.Arguments)
+
 				if tool, exists := tools[toolCall.Function.Name]; exists {
 					// ツール関数を実行
 					result, err := tool.Function(toolCall.Function.Arguments)
