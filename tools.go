@@ -198,8 +198,9 @@ func GetListTool() ToolDefinition {
 
 // SearchInDirectoryArgs はsearchInDirectoryツールの引数を表す構造体
 type SearchInDirectoryArgs struct {
-	Path    string `json:"path" description:"検索するディレクトリのパス"`
-	Keyword string `json:"keyword" description:"検索するキーワード"`
+	Path         string   `json:"path" description:"検索するディレクトリのパス"`
+	Keyword      string   `json:"keyword" description:"検索するキーワード"`
+	ExcludePaths []string `json:"excludePaths,omitempty" description:"除外するパスのパターン（先頭一致）"`
 }
 
 // SearchInDirectoryResult はsearchInDirectoryツールの結果を表す構造体
@@ -222,6 +223,20 @@ func SearchInDirectory(args string) (string, error) {
 	err := filepath.Walk(searchInDirectoryArgs.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err // エラーが発生した場合は中断
+		}
+
+		// excludePathsによる除外チェック
+		if len(searchInDirectoryArgs.ExcludePaths) > 0 {
+			for _, excludePath := range searchInDirectoryArgs.ExcludePaths {
+				if strings.HasPrefix(path, excludePath) {
+					// ディレクトリの場合は配下をスキップ
+					if info.IsDir() {
+						return filepath.SkipDir
+					}
+					// ファイルの場合はスキップ
+					return nil
+				}
+			}
 		}
 
 		// ディレクトリは検索対象外
@@ -288,6 +303,13 @@ func GetSearchInDirectoryTool() ToolDefinition {
 						"keyword": {
 							Type:        jsonschema.String,
 							Description: "検索するキーワード",
+						},
+						"excludePaths": {
+							Type:        jsonschema.Array,
+							Description: "除外するパスのパターン（先頭一致）。指定されたパターンで始まるパスは検索対象から除外されます。",
+							Items: &jsonschema.Definition{
+								Type: jsonschema.String,
+							},
 						},
 					},
 					Required: []string{"path", "keyword"},
