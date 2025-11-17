@@ -10,6 +10,80 @@ import (
 	"github.com/sashabaranov/go-openai"
 )
 
+const maxToolCallSteps = 5
+
+// handleUserInput はユーザー入力1件を処理し、ツールコールがなくなるまで繰り返し実行する
+func handleUserInput(
+	client *openai.Client,
+	userInput string,
+	messages []openai.ChatCompletionMessage,
+	tools map[string]ToolDefinition,
+	toolSchemas []openai.Tool,
+) ([]openai.ChatCompletionMessage, error) {
+	// ユーザーメッセージを履歴に追加
+	messages = append(messages, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: userInput,
+	})
+
+	// ツールコールがなくなるまでループ
+	for step := 0; step < maxToolCallSteps; step++ {
+		// OpenAI APIに送信
+		resp, err := client.CreateChatCompletion(
+			context.Background(),
+			openai.ChatCompletionRequest{
+				Model:    openai.GPT5Nano,
+				Messages: messages,
+				Tools:    toolSchemas,
+			},
+		)
+		if err != nil {
+			return messages, fmt.Errorf("error calling OpenAI API: %v", err)
+		}
+
+		if len(resp.Choices) == 0 {
+			return messages, fmt.Errorf("no response received from OpenAI")
+		}
+
+		responseMessage := resp.Choices[0].Message
+		messages = append(messages, responseMessage)
+
+		// ツールコールがない場合は最終応答として表示して終了
+		if len(responseMessage.ToolCalls) == 0 {
+			fmt.Printf("Assistant: %s\n\n", responseMessage.Content)
+			return messages, nil
+		}
+
+		// ツールコールがある場合の処理
+		fmt.Println("Assistant is using tools...")
+
+		for _, toolCall := range responseMessage.ToolCalls {
+			fmt.Printf("Tool call: %s, arguments: %s\n", toolCall.Function.Name, toolCall.Function.Arguments)
+
+			if tool, exists := tools[toolCall.Function.Name]; exists {
+				// ツール関数を実行
+				result, err := tool.Function(toolCall.Function.Arguments)
+				if err != nil {
+					result = fmt.Sprintf(`{"error": "Tool execution failed: %v"}`, err)
+				}
+
+				// ツール実行結果をメッセージ履歴に追加
+				messages = append(messages, openai.ChatCompletionMessage{
+					Role:       openai.ChatMessageRoleTool,
+					Content:    result,
+					ToolCallID: toolCall.ID,
+				})
+
+				fmt.Printf("Tool '%s' executed with result: %s\n", toolCall.Function.Name, result)
+			}
+		}
+
+		// ループを継続して、ツール実行結果を元に再度APIを呼び出す
+	}
+
+	return messages, fmt.Errorf("maximum tool call steps (%d) exceeded", maxToolCallSteps)
+}
+
 func main() {
 	// 環境変数からAPIキーを取得
 	apiKey := os.Getenv("OPENAI_API_KEY")
@@ -59,81 +133,12 @@ func main() {
 			continue
 		}
 
-		// ユーザーメッセージを履歴に追加
-		messages = append(messages, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleUser,
-			Content: userInput,
-		})
-
-		// OpenAI APIに送信
-		resp, err := client.CreateChatCompletion(
-			context.Background(),
-			openai.ChatCompletionRequest{
-				Model:    openai.GPT5Nano,
-				Messages: messages,
-				Tools:    toolSchemas,
-			},
-		)
+		// handleUserInputでユーザー入力1件を処理
+		var err error
+		messages, err = handleUserInput(client, userInput, messages, tools, toolSchemas)
 		if err != nil {
-			fmt.Printf("Error calling OpenAI API: %v\n", err)
+			fmt.Printf("Error handling user input: %v\n", err)
 			continue
-		}
-
-		if len(resp.Choices) == 0 {
-			fmt.Println("No response received from OpenAI")
-			continue
-		}
-
-		responseMessage := resp.Choices[0].Message
-		messages = append(messages, responseMessage)
-
-		// ツールコールがある場合の処理
-		if len(responseMessage.ToolCalls) > 0 {
-			fmt.Println("Assistant is using tools...")
-
-			for _, toolCall := range responseMessage.ToolCalls {
-				fmt.Printf("Tool call: %s, arguments: %s\n", toolCall.Function.Name, toolCall.Function.Arguments)
-
-				if tool, exists := tools[toolCall.Function.Name]; exists {
-					// ツール関数を実行
-					result, err := tool.Function(toolCall.Function.Arguments)
-					if err != nil {
-						result = fmt.Sprintf(`{"error": "Tool execution failed: %v"}`, err)
-					}
-
-					// ツール実行結果をメッセージ履歴に追加
-					messages = append(messages, openai.ChatCompletionMessage{
-						Role:       openai.ChatMessageRoleTool,
-						Content:    result,
-						ToolCallID: toolCall.ID,
-					})
-
-					fmt.Printf("Tool '%s' executed with result: %s\n", toolCall.Function.Name, result)
-				}
-			}
-
-			// ツール実行後、再度APIを呼び出して最終回答を取得
-			resp, err = client.CreateChatCompletion(
-				context.Background(),
-				openai.ChatCompletionRequest{
-					Model:    openai.GPT5Nano,
-					Messages: messages,
-					Tools:    toolSchemas,
-				},
-			)
-			if err != nil {
-				fmt.Printf("Error calling OpenAI API after tool execution: %v\n", err)
-				continue
-			}
-
-			if len(resp.Choices) > 0 {
-				finalMessage := resp.Choices[0].Message
-				messages = append(messages, finalMessage)
-				fmt.Printf("Assistant: %s\n\n", finalMessage.Content)
-			}
-		} else {
-			// 通常の回答応答
-			fmt.Printf("Assistant: %s\n\n", responseMessage.Content)
 		}
 	}
 }
