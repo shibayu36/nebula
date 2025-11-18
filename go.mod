@@ -1,4 +1,4 @@
-module nebula
+module github.com/shibayu36/nebula
 
 go 1.24.1
 

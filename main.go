@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/sashabaranov/go-openai"
+	"github.com/shibayu36/nebula/tools"
 )
 
 const maxToolCallSteps = 5
@@ -17,7 +18,7 @@ func handleUserInput(
 	client *openai.Client,
 	userInput string,
 	messages []openai.ChatCompletionMessage,
-	tools map[string]ToolDefinition,
+	tools map[string]tools.ToolDefinition,
 	toolSchemas []openai.Tool,
 ) ([]openai.ChatCompletionMessage, error) {
 	// ユーザーメッセージを履歴に追加
@@ -97,7 +98,7 @@ func main() {
 	client := openai.NewClient(apiKey)
 
 	// 利用可能なツールを取得
-	tools := GetAvailableTools()
+	tools := tools.GetAvailableTools()
 
 	// ツールのスキーマを配列に変換
 	var toolNames []string
