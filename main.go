@@ -100,13 +100,15 @@ func main() {
 	tools := GetAvailableTools()
 
 	// ツールのスキーマを配列に変換
+	var toolNames []string
 	var toolSchemas []openai.Tool
-	for _, tool := range tools {
+	for name, tool := range tools {
+		toolNames = append(toolNames, name)
 		toolSchemas = append(toolSchemas, tool.Schema)
 	}
 
 	fmt.Println("nebula - OpenAI Chat CLI with Function Calling")
-	fmt.Println("Available tools: readFile")
+	fmt.Println("Available tools: " + strings.Join(toolNames, ", "))
 	fmt.Println("Type 'exit' or 'quit' to end the conversation")
 	fmt.Println("---")
 
