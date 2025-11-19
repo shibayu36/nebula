@@ -6,5 +6,6 @@ func GetAvailableTools() map[string]ToolDefinition {
 		"list":              GetListTool(),
 		"searchInDirectory": GetSearchInDirectoryTool(),
 		"writeFile":         GetWriteFileTool(),
+		"editFile":          GetEditFileTool(),
 	}
 }
