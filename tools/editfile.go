@@ -7,6 +7,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/hexops/gotextdiff"
+	"github.com/hexops/gotextdiff/myers"
+	"github.com/hexops/gotextdiff/span"
 	"github.com/sashabaranov/go-openai"
 	"github.com/sashabaranov/go-openai/jsonschema"
 )
@@ -45,9 +48,24 @@ func EditFile(args string) (string, error) {
 		return genErrorResult(fmt.Sprintf("ファイルが存在しません。新しいファイルの作成にはwriteFileを使用してください。: %v", err)), nil
 	}
 
+	// 既存ファイルの内容を読み込む
+	oldContentBytes, err := os.ReadFile(editFileArgs.Path)
+	if err != nil {
+		return genErrorResult(fmt.Sprintf("ファイルの読み込みに失敗しました: %v", err)), nil
+	}
+	oldContent := string(oldContentBytes)
+
+	// 差分を計算（ユニファイドdiff形式）
+	diffText := formatUnifiedDiff(oldContent, editFileArgs.NewContent, editFileArgs.Path, editFileArgs.Path)
+
+	// 変更がない場合はエラーを返す
+	if diffText == "" {
+		return genErrorResult("ファイルに変更がありません"), nil
+	}
+
 	// ユーザー許可の取得
-	fmt.Printf("\nファイルを編集します: %s\n", editFileArgs.Path)
-	fmt.Printf("--- 内容 ---\n%s\n\n", editFileArgs.NewContent)
+	fmt.Println("\nファイルを編集します: ")
+	fmt.Printf("%s\n\n", diffText)
 	fmt.Print("実行してもよろしいですか？(y/N): ")
 
 	// ユーザー応答を読み取り
@@ -107,4 +125,25 @@ func GetEditFileTool() ToolDefinition {
 		},
 		Function: EditFile,
 	}
+}
+
+// formatUnifiedDiff は2つのテキストを行単位のユニファイドdiff形式に整形する
+func formatUnifiedDiff(oldText, newText, oldPath, newPath string) string {
+	// 変更がない場合は空文字列を返す
+	if oldText == newText {
+		return ""
+	}
+
+	// 差分を計算
+	uri := span.URIFromPath(oldPath)
+	edits := myers.ComputeEdits(uri, oldText, newText)
+
+	// 変更がない場合は空文字列を返す
+	if len(edits) == 0 {
+		return ""
+	}
+
+	// ユニファイドdiff形式に整形
+	unified := gotextdiff.ToUnified(oldPath, newPath, oldText, edits)
+	return fmt.Sprint(unified)
 }
